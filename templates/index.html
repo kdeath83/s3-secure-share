@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Secure S3 Share</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Secure S3 Share</h1>
+            <p class="subtitle">Direct-to-S3 file sharing with pre-signed URLs</p>
+        </header>
+
+        <!-- Upload Section -->
+        <div class="upload-section" id="drop-zone">
+            <div class="upload-area">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p class="upload-text">Drag & drop files here or <span class="click-trigger">click to browse</span></p>
+                <p class="upload-hint">Max 500MB | Files go directly to S3</p>
+                <input type="file" id="file-input" multiple hidden>
+            </div>
+        </div>
+
+        <!-- Upload Options -->
+        <div class="options-panel" id="options-panel" style="display:none;">
+            <div class="option-row">
+                <label>Password Protection (optional)</label>
+                <input type="password" id="file-password" placeholder="Leave empty for open access" maxlength="128">
+            </div>
+            <div class="option-row">
+                <label>Link Expires After</label>
+                <select id="ttl-select">
+                    <option value="1">1 hour</option>
+                    <option value="24" selected>24 hours</option>
+                    <option value="168">7 days</option>
+                    <option value="720">30 days</option>
+                    <option value="0">Never</option>
+                </select>
+            </div>
+            <button class="btn-upload" id="upload-btn">Upload to S3</button>
+            <button class="btn-cancel" id="cancel-btn">Cancel</button>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-container" id="progress-container" style="display:none;">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p class="progress-text" id="progress-text">Preparing upload...</p>
+        </div>
+
+        <!-- Files List -->
+        <div class="files-section">
+            <div class="section-header">
+                <h2>Shared Files</h2>
+                <span class="file-count" id="file-count">0 files</span>
+            </div>
+            <div class="files-list" id="files-list"></div>
+        </div>
+
+        <!-- Result Modal -->
+        <div class="modal" id="result-modal" style="display:none;">
+            <div class="modal-content">
+                <h3>✅ Upload Complete</h3>
+                <div class="share-link-box">
+                    <input type="text" id="share-link" readonly>
+                    <button class="btn-copy" id="copy-btn">Copy</button>
+                </div>
+                <p class="link-expiry" id="link-expiry"></p>
+                <button class="btn-close" id="close-modal">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
