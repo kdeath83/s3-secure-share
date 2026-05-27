@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Secure S3 File Sharing Portal — One-click deploy to AWS
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket for file storage
+    Default: secure-share-files-demo
+  AdminPassword:
+    Type: String
+    Description: Admin password for file deletion (optional)
+    NoEcho: true
+    Default: ''
+  MaxFileSizeMB:
+    Type: Number
+    Description: Maximum upload size in MB
+    Default: 500
+    MinValue: 1
+    MaxValue: 5000
+  DownloadTTL:
+    Type: Number
+    Description: Download URL TTL in seconds
+    Default: 3600
+    MinValue: 60
+    MaxValue: 604800
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+
+Resources:
+  # S3 Bucket for file storage
+  FileStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - content-type
+              - x-amz-content-sha256
+              - x-amz-date
+              - authorization
+            AllowedMethods:
+              - GET
+              - PUT
+            AllowedOrigins:
+              - !Sub 'https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com'
+            MaxAge: 3000
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldFiles
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+
+  # IAM Role for Lambda
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:PutBucketCors
+                Resource: !Sub 'arn:aws:s3:::${S3BucketName}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub 'arn:aws:s3:::${S3BucketName}'
+
+  # Lambda Function
+  SecureShareFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: s3-secure-share
+      CodeUri: .
+      Handler: lambda_handler.handler
+      Description: Secure file sharing with pre-signed URLs
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketName
+          AWS_DEFAULT_REGION: !Ref AWS::Region
+          MAX_FILE_SIZE_MB: !Ref MaxFileSizeMB
+          URL_TTL_SECONDS: !Ref DownloadTTL
+          UPLOAD_URL_TTL: 300
+          ADMIN_PASSWORD: !Ref AdminPassword
+          FORCE_HTTPS: 'true'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        ApiGatewayRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+            RestApiId: !Ref ApiGatewayApi
+        ApiGatewayProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            RestApiId: !Ref ApiGatewayApi
+
+  # API Gateway
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: s3-secure-share-api
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'content-type,x-admin-token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'3000'"
+      BinaryMediaTypes:
+        - "multipart/form-data"
+
+  # CloudWatch Log Group with retention
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SecureShareFunction}'
+      RetentionInDays: 14
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/prod/'
+  S3Bucket:
+    Description: S3 bucket for file storage
+    Value: !Ref FileStorageBucket
+  LambdaFunction:
+    Description: Lambda function name
+    Value: !Ref SecureShareFunction
+  DeploymentInstructions:
+    Description: Post-deploy steps
+    Value: "1. Visit the API endpoint. 2. Upload files. 3. Share links. Files are stored in the S3 bucket with pre-signed URLs."
